@@ -1,0 +1,8 @@
+CREATE TABLE books (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    published_year INTEGER,
+    rating INTEGER,
+    finished BOOLEAN DEFAULT FALSE
+);
