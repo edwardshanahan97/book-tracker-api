@@ -1,0 +1,24 @@
+{
+  "name": "book-tracker-api",
+  "version": "1.0.0",
+  "description": "A learning project for building a REST API with Node.js, Express, PostgreSQL, and SQL.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --watch server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edwardshanahan97/book-tracker-api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/edwardshanahan97/book-tracker-api/issues"
+  },
+  "homepage": "https://github.com/edwardshanahan97/book-tracker-api#readme",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
