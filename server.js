@@ -60,7 +60,7 @@ app.get("/books", (req, res) => {
 app.get("/books/:id", (req, res) => {
   const id = Number(req.params.id);
 
-  const book = books.find((book) => (book.id = id));
+  const book = books.find((book) => book.id === id);
 
   if (!book) {
     return res.status(404).json({ error: "Book not found" });
@@ -77,13 +77,14 @@ app.post("/books/", (req, res) => {
   const rating = req.body.rating;
   const finished = req.body.finished;
 
-  if (!req.body || !title || !author || !rating || !finished) {
+  if (!req.body || !title || !author || !rating || finished === undefined) {
     return res
       .status(400)
       .json({ error: "Title, author, rating finished are required" });
   }
 
   const book = {
+    id: nextId,
     title,
     author,
     rating,
@@ -119,13 +120,13 @@ app.delete("/books/:id", (req, res) => {
   const id = Number(req.params.id);
   const bookIndex = books.findIndex((book) => book.id === id);
 
-  if (bookIndex < 1) {
+  if (bookIndex < 0) {
     return res.status(404).json({ error: "Book not found" });
   }
 
   books.splice(bookIndex, 1);
 
-  res.status(201).end();
+  res.status(204).end();
 });
 
 app.use((req, res) => {
