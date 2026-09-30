@@ -46,7 +46,18 @@ import pool from "../database/db.js";
 
 export const getBooks = async (req, res) => {
   try {
-    const result = await pool.query("Select * FROM books");
+    const result = await pool.query(`
+  SELECT
+    books.id,
+    books.title,
+    books.published_year,
+    books.rating,
+    books.finished,
+    authors.name AS author
+  FROM books
+  JOIN authors ON authors.id = books.author_id
+  ORDER BY books.id
+`);
 
     res.json(result.rows);
   } catch (error) {
@@ -59,13 +70,27 @@ export const getBookById = async (req, res) => {
   const id = Number(req.params.id);
 
   try {
-    const result = await pool.query("SELECT * FROM books WHERE id = $1", [id]);
+    const result = await pool.query(
+      `
+  SELECT
+    books.id,
+    books.title,
+    books.published_year,
+    books.rating,
+    books.finished,
+    authors.name AS author
+  FROM books
+  JOIN authors ON authors.id = books.author_id
+  WHERE books.id = $1
+`,
+      [id],
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Book not found" });
     }
 
-    res.json(result.rows);
+    res.json(result.rows[0]);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Internal server error" });
