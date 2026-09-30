@@ -42,21 +42,34 @@ const books = [
     finished: true,
   },
 ];
+import pool from "../database/db.js";
 
-export const getBooks = (req, res) => {
-  res.json(books);
+export const getBooks = async (req, res) => {
+  try {
+    const result = await pool.query("Select * FROM books");
+
+    res.json(result.rows);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
-export const getBookById = (req, res) => {
+export const getBookById = async (req, res) => {
   const id = Number(req.params.id);
 
-  const book = books.find((book) => book.id === id);
+  try {
+    const result = await pool.query("SELECT * FROM books WHERE id = $1", [id]);
 
-  if (!book) {
-    return res.status(404).json({ error: "Book not found" });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Internal server error" });
   }
-
-  res.json(book);
 };
 
 let nextId = 7;
