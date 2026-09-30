@@ -72,62 +72,76 @@ export const getBookById = async (req, res) => {
   }
 };
 
-let nextId = 7;
-
-export const addBook = (req, res) => {
+export const addBook = async (req, res) => {
   const title = req.body.title;
-  const author = req.body.author;
+  const author_id = req.body.author_id;
+  const published_year = req.body.published_year;
   const rating = req.body.rating;
   const finished = req.body.finished;
 
-  if (!req.body || !title || !author || !rating || finished === undefined) {
-    return res
-      .status(400)
-      .json({ error: "Title, author, rating finished are required" });
+  try {
+    if (
+      !req.body ||
+      !title ||
+      !author_id ||
+      !published_year ||
+      !rating ||
+      finished === undefined
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Title, author, rating finished are required" });
+    }
+
+    const result = await pool.query(
+      "INSERT INTO books (title, author_id, published_year, rating, finished) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [title, author_id, published_year, rating, finished],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: "Internal server error" });
   }
-
-  const book = {
-    id: nextId,
-    title,
-    author,
-    rating,
-    finished,
-  };
-
-  nextId++;
-  books.push(book);
-  res.status(201).json(book);
 };
 
-export const editBook = (req, res) => {
+export const editBook = async (req, res) => {
   const id = Number(req.params.id);
-  const book = books.find((book) => book.id === id);
   const title = req.body.title;
-  const author = req.body.author;
+  const author_id = req.body.author_id;
+  const published_year = req.body.published_year;
   const rating = req.body.rating;
   const finished = req.body.finished;
 
-  if (!book) {
-    return res.status(404).json({ error: "Book not found" });
+  try {
+    const result = await pool.query(
+      "UPDATE books SET title = $1, author_id = $2, published_year = $3, rating = $4, finished = $5 WHERE id = $6 RETURNING *",
+      [title, author_id, published_year, rating, finished, id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: "Internal server error" });
   }
-
-  book.title = title;
-  book.author = author;
-  book.rating = rating;
-  book.finished = finished;
-
-  res.json(book);
 };
 
-export const deleteBook = (req, res) => {
+export const deleteBook = async (req, res) => {
   const id = Number(req.params.id);
-  const bookIndex = books.findIndex((book) => book.id === id);
 
-  if (bookIndex < 0) {
-    return res.status(404).json({ error: "Book not found" });
+  try {
+    const result = await pool.query("DELETE FROM books WHERE id = $1", [id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    res.status(204).end();
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ error: "Internal server error" });
   }
-
-  books.splice(bookIndex, 1);
-
-  res.status(204).end();
 };
