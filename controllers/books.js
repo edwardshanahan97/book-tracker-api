@@ -1,47 +1,3 @@
-const books = [
-  {
-    id: 1,
-    title: "The Hobbit",
-    author: "J.R.R. Tolkien",
-    rating: 5,
-    finished: true,
-  },
-  {
-    id: 2,
-    title: "Dune",
-    author: "Frank Herbert",
-    rating: 4,
-    finished: true,
-  },
-  {
-    id: 3,
-    title: "1984",
-    author: "George Orwell",
-    rating: 5,
-    finished: true,
-  },
-  {
-    id: 4,
-    title: "The Martian",
-    author: "Andy Weir",
-    rating: 5,
-    finished: true,
-  },
-  {
-    id: 5,
-    title: "Project Hail Mary",
-    author: "Andy Weir",
-    rating: 5,
-    finished: true,
-  },
-  {
-    id: 6,
-    title: "Neuromancer",
-    author: "William Gibson",
-    rating: 3,
-    finished: true,
-  },
-];
 import pool from "../database/db.js";
 
 export const getBooks = async (req, res) => {
@@ -53,13 +9,36 @@ export const getBooks = async (req, res) => {
     books.published_year,
     books.rating,
     books.finished,
-    authors.name AS author
+    authors.name AS author,
+    genres.name AS genre
   FROM books
   JOIN authors ON authors.id = books.author_id
+  LEFT JOIN book_genres ON books.id = book_genres.book_id
+  LEFT JOIN genres ON book_genres.genre_id = genres.id
   ORDER BY books.id
 `);
 
-    res.json(result.rows);
+    const books = result.rows.reduce((acc, row) => {
+      if (!acc[row.id]) {
+        acc[row.id] = {
+          id: row.id,
+          title: row.title,
+          published_year: row.published_year,
+          rating: row.rating,
+          finished: row.finished,
+          author: row.author,
+          genres: [],
+        };
+      }
+
+      if (row.genre) {
+        acc[row.id].genres.push(row.genre);
+      }
+
+      return acc;
+    }, {});
+
+    res.json(Object.values(books));
   } catch (error) {
     console.log(error);
     return res.status(500).json({ error: "Internal server error" });
@@ -78,9 +57,12 @@ export const getBookById = async (req, res) => {
     books.published_year,
     books.rating,
     books.finished,
-    authors.name AS author
+    authors.name AS author,
+    genres.name AS genre
   FROM books
   JOIN authors ON authors.id = books.author_id
+  JOIN book_genres ON books.id = book_genres.book_id
+  JOIN genres ON book_genres.genre_id = genres.id
   WHERE books.id = $1
 `,
       [id],
@@ -90,7 +72,19 @@ export const getBookById = async (req, res) => {
       return res.status(404).json({ error: "Book not found" });
     }
 
-    res.json(result.rows[0]);
+    const firstRow = result.rows[0];
+
+    const book = {
+      id: firstRow.id,
+      title: firstRow.title,
+      published_year: firstRow.published_year,
+      rating: firstRow.rating,
+      finished: firstRow.finished,
+      author: firstRow.author,
+      genres: result.rows.map((row) => row.genre),
+    };
+
+    res.json(book);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Internal server error" });
