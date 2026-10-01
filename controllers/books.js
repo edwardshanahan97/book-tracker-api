@@ -1,5 +1,9 @@
 import pool from "../database/db.js";
 import { isValidBook, isValidBookId } from "../utils/validation.js";
+import {
+  findOrCreateAuthor,
+  findOrCreateGenre,
+} from "../utils/databaseHelpers.js";
 
 export const getBooks = async (req, res) => {
   try {
@@ -123,23 +127,7 @@ export const addBook = async (req, res) => {
 
     await client.query("BEGIN");
 
-    const authorResult = await client.query(
-      "SELECT id FROM authors WHERE name = $1",
-      [author],
-    );
-
-    let author_id;
-
-    if (authorResult.rows.length > 0) {
-      author_id = authorResult.rows[0].id;
-    } else {
-      const newAuthorResult = await client.query(
-        "INSERT INTO authors (name) VALUES ($1) RETURNING id",
-        [author],
-      );
-
-      author_id = newAuthorResult.rows[0].id;
-    }
+    const author_id = await findOrCreateAuthor(client, author);
 
     const result = await client.query(
       "INSERT INTO books (title, author_id, published_year, rating, finished) VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -149,23 +137,7 @@ export const addBook = async (req, res) => {
     const book_id = result.rows[0].id;
 
     for (const genre of uniqueGenres) {
-      const genreResult = await client.query(
-        "SELECT id FROM genres WHERE name = $1",
-        [genre],
-      );
-
-      let genre_id;
-
-      if (genreResult.rows.length > 0) {
-        genre_id = genreResult.rows[0].id;
-      } else {
-        const newGenreResult = await client.query(
-          "INSERT INTO genres (name) VALUES ($1) RETURNING id",
-          [genre],
-        );
-
-        genre_id = newGenreResult.rows[0].id;
-      }
+      const genre_id = await findOrCreateGenre(client, genre);
 
       await client.query(
         "INSERT INTO book_genres (book_id, genre_id) VALUES ($1, $2)",
@@ -227,23 +199,7 @@ export const editBook = async (req, res) => {
 
     await client.query("BEGIN");
 
-    const authorResult = await client.query(
-      "SELECT id FROM authors WHERE name = $1",
-      [author],
-    );
-
-    let author_id;
-
-    if (authorResult.rows.length > 0) {
-      author_id = authorResult.rows[0].id;
-    } else {
-      const newAuthorResult = await client.query(
-        "INSERT INTO authors (name) VALUES ($1) RETURNING id",
-        [author],
-      );
-
-      author_id = newAuthorResult.rows[0].id;
-    }
+    const author_id = await findOrCreateAuthor(client, author);
 
     const result = await client.query(
       `UPDATE books
@@ -268,23 +224,7 @@ export const editBook = async (req, res) => {
     await client.query("DELETE FROM book_genres WHERE book_id = $1", [id]);
 
     for (const genre of uniqueGenres) {
-      const genreResult = await client.query(
-        "SELECT id FROM genres WHERE name = $1",
-        [genre],
-      );
-
-      let genre_id;
-
-      if (genreResult.rows.length > 0) {
-        genre_id = genreResult.rows[0].id;
-      } else {
-        const newGenreResult = await client.query(
-          "INSERT INTO genres (name) VALUES ($1) RETURNING id",
-          [genre],
-        );
-
-        genre_id = newGenreResult.rows[0].id;
-      }
+      const genre_id = await findOrCreateGenre(client, genre);
 
       await client.query(
         "INSERT INTO book_genres (book_id, genre_id) VALUES ($1, $2)",
