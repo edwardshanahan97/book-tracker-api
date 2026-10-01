@@ -99,23 +99,28 @@ export const addBook = async (req, res) => {
   const finished = req.body.finished;
   const genres = req.body.genres;
 
-  try {
-    if (
-      !req.body ||
-      !title ||
-      !author ||
-      !published_year ||
-      !rating ||
-      finished === undefined ||
-      !Array.isArray(genres)
-    ) {
-      return res.status(400).json({
-        error:
-          "Title, author, published year, rating and finished are required",
-      });
-    }
+  if (
+    !req.body ||
+    !title ||
+    !author ||
+    !published_year ||
+    !rating ||
+    finished === undefined ||
+    !Array.isArray(genres)
+  ) {
+    return res.status(400).json({
+      error: "Title, author, published year, rating and finished are required",
+    });
+  }
 
-    const authorResult = await pool.query(
+  let client;
+
+  try {
+    client = await pool.connect();
+
+    await client.query("BEGIN");
+
+    const authorResult = await client.query(
       "SELECT id FROM authors WHERE name = $1",
       [author],
     );
@@ -125,7 +130,7 @@ export const addBook = async (req, res) => {
     if (authorResult.rows.length > 0) {
       author_id = authorResult.rows[0].id;
     } else {
-      const newAuthorResult = await pool.query(
+      const newAuthorResult = await client.query(
         "INSERT INTO authors (name) VALUES ($1) RETURNING id",
         [author],
       );
@@ -133,7 +138,7 @@ export const addBook = async (req, res) => {
       author_id = newAuthorResult.rows[0].id;
     }
 
-    const result = await pool.query(
+    const result = await client.query(
       "INSERT INTO books (title, author_id, published_year, rating, finished) VALUES ($1, $2, $3, $4, $5) RETURNING id",
       [title, author_id, published_year, rating, finished],
     );
@@ -141,7 +146,7 @@ export const addBook = async (req, res) => {
     const book_id = result.rows[0].id;
 
     for (const genre of genres) {
-      const genreResult = await pool.query(
+      const genreResult = await client.query(
         "SELECT id FROM genres WHERE name = $1",
         [genre],
       );
@@ -151,7 +156,7 @@ export const addBook = async (req, res) => {
       if (genreResult.rows.length > 0) {
         genre_id = genreResult.rows[0].id;
       } else {
-        const newGenreResult = await pool.query(
+        const newGenreResult = await client.query(
           "INSERT INTO genres (name) VALUES ($1) RETURNING id",
           [genre],
         );
@@ -159,11 +164,13 @@ export const addBook = async (req, res) => {
         genre_id = newGenreResult.rows[0].id;
       }
 
-      await pool.query(
+      await client.query(
         "INSERT INTO book_genres (book_id, genre_id) VALUES ($1, $2)",
         [book_id, genre_id],
       );
     }
+
+    await client.query("COMMIT");
 
     res.status(201).json({
       id: book_id,
@@ -175,8 +182,15 @@ export const addBook = async (req, res) => {
       genres,
     });
   } catch (error) {
+    if (client) {
+      await client.query("ROLLBACK");
+    }
     console.error(error);
     return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 };
 
