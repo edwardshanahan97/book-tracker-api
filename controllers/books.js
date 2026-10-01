@@ -332,16 +332,41 @@ export const editBook = async (req, res) => {
 export const deleteBook = async (req, res) => {
   const id = Number(req.params.id);
 
+  let client;
+
   try {
-    const result = await pool.query("DELETE FROM books WHERE id = $1", [id]);
+    client = await pool.connect();
+
+    await client.query("BEGIN");
+
+    await client.query("DELETE FROM book_genres WHERE book_id = $1", [id]);
+
+    const result = await client.query("DELETE FROM books WHERE id = $1", [id]);
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Book not found" });
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        error: "Book not found",
+      });
     }
 
-    res.status(204).end();
+    await client.query("COMMIT");
+
+    return res.status(204).end();
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: "Internal server error" });
+    if (client) {
+      await client.query("ROLLBACK");
+    }
+
+    console.error(error);
+
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  } finally {
+    if (client) {
+      client.release();
+    }
   }
 };
