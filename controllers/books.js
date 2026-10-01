@@ -1,4 +1,5 @@
 import pool from "../database/db.js";
+import { isValidBook, isValidBookId } from "../utils/validation.js";
 
 export const getBooks = async (req, res) => {
   try {
@@ -48,6 +49,12 @@ export const getBooks = async (req, res) => {
 export const getBookById = async (req, res) => {
   const id = Number(req.params.id);
 
+  if (!isValidBookId(id)) {
+    return res.status(400).json({
+      error: "Invalid book ID",
+    });
+  }
+
   try {
     const result = await pool.query(
       `
@@ -61,8 +68,8 @@ export const getBookById = async (req, res) => {
     genres.name AS genre
   FROM books
   JOIN authors ON authors.id = books.author_id
-  JOIN book_genres ON books.id = book_genres.book_id
-  JOIN genres ON book_genres.genre_id = genres.id
+  LEFT JOIN book_genres ON books.id = book_genres.book_id
+  LEFT JOIN genres ON book_genres.genre_id = genres.id
   WHERE books.id = $1
 `,
       [id],
@@ -81,7 +88,9 @@ export const getBookById = async (req, res) => {
       rating: firstRow.rating,
       finished: firstRow.finished,
       author: firstRow.author,
-      genres: result.rows.map((row) => row.genre),
+      genres: result.rows
+        .map((row) => row.genre)
+        .filter((genre) => genre !== null),
     };
 
     res.json(book);
@@ -99,19 +108,13 @@ export const addBook = async (req, res) => {
   const finished = req.body.finished;
   const genres = req.body.genres;
 
-  if (
-    !req.body ||
-    !title ||
-    !author ||
-    !published_year ||
-    !rating ||
-    finished === undefined ||
-    !Array.isArray(genres)
-  ) {
+  if (!isValidBook(req.body)) {
     return res.status(400).json({
-      error: "Title, author, published year, rating and finished are required",
+      error: "Invalid book data",
     });
   }
+
+  const uniqueGenres = [...new Set(genres)];
 
   let client;
 
@@ -145,7 +148,7 @@ export const addBook = async (req, res) => {
 
     const book_id = result.rows[0].id;
 
-    for (const genre of genres) {
+    for (const genre of uniqueGenres) {
       const genreResult = await client.query(
         "SELECT id FROM genres WHERE name = $1",
         [genre],
@@ -179,7 +182,7 @@ export const addBook = async (req, res) => {
       rating,
       finished,
       author,
-      genres,
+      genres: uniqueGenres,
     });
   } catch (error) {
     if (client) {
@@ -203,20 +206,19 @@ export const editBook = async (req, res) => {
   const finished = req.body.finished;
   const genres = req.body.genres;
 
-  if (
-    !req.body ||
-    !title ||
-    !author ||
-    !published_year ||
-    !rating ||
-    finished === undefined ||
-    !Array.isArray(genres)
-  ) {
+  if (!isValidBookId(id)) {
     return res.status(400).json({
-      error:
-        "Title, author, published year, rating, finished and genres are required",
+      error: "Invalid book ID",
     });
   }
+
+  if (!isValidBook(req.body)) {
+    return res.status(400).json({
+      error: "Invalid book data",
+    });
+  }
+
+  const uniqueGenres = [...new Set(genres)];
 
   let client;
 
@@ -225,7 +227,6 @@ export const editBook = async (req, res) => {
 
     await client.query("BEGIN");
 
-    // Find the author
     const authorResult = await client.query(
       "SELECT id FROM authors WHERE name = $1",
       [author],
@@ -233,7 +234,6 @@ export const editBook = async (req, res) => {
 
     let author_id;
 
-    // Use existing author or create a new one
     if (authorResult.rows.length > 0) {
       author_id = authorResult.rows[0].id;
     } else {
@@ -245,7 +245,6 @@ export const editBook = async (req, res) => {
       author_id = newAuthorResult.rows[0].id;
     }
 
-    // Update the book
     const result = await client.query(
       `UPDATE books
        SET title = $1,
@@ -258,7 +257,6 @@ export const editBook = async (req, res) => {
       [title, author_id, published_year, rating, finished, id],
     );
 
-    // Book doesn't exist
     if (result.rows.length === 0) {
       await client.query("ROLLBACK");
 
@@ -267,11 +265,9 @@ export const editBook = async (req, res) => {
       });
     }
 
-    // Remove the book's old genre relationships
     await client.query("DELETE FROM book_genres WHERE book_id = $1", [id]);
 
-    // Create the new genre relationships
-    for (const genre of genres) {
+    for (const genre of uniqueGenres) {
       const genreResult = await client.query(
         "SELECT id FROM genres WHERE name = $1",
         [genre],
@@ -279,7 +275,6 @@ export const editBook = async (req, res) => {
 
       let genre_id;
 
-      // Use existing genre or create a new one
       if (genreResult.rows.length > 0) {
         genre_id = genreResult.rows[0].id;
       } else {
@@ -291,14 +286,12 @@ export const editBook = async (req, res) => {
         genre_id = newGenreResult.rows[0].id;
       }
 
-      // Connect the genre to the book
       await client.query(
         "INSERT INTO book_genres (book_id, genre_id) VALUES ($1, $2)",
         [id, genre_id],
       );
     }
 
-    // Everything worked — save it
     await client.query("COMMIT");
 
     return res.status(200).json({
@@ -308,10 +301,9 @@ export const editBook = async (req, res) => {
       rating,
       finished,
       author,
-      genres,
+      genres: uniqueGenres,
     });
   } catch (error) {
-    // Something failed — undo the transaction
     if (client) {
       await client.query("ROLLBACK");
     }
@@ -322,7 +314,6 @@ export const editBook = async (req, res) => {
       error: "Internal server error",
     });
   } finally {
-    // Give the connection back to the pool
     if (client) {
       client.release();
     }
@@ -331,6 +322,12 @@ export const editBook = async (req, res) => {
 
 export const deleteBook = async (req, res) => {
   const id = Number(req.params.id);
+
+  if (!isValidBookId(id)) {
+    return res.status(400).json({
+      error: "Invalid book ID",
+    });
+  }
 
   let client;
 
