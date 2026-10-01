@@ -197,24 +197,135 @@ export const addBook = async (req, res) => {
 export const editBook = async (req, res) => {
   const id = Number(req.params.id);
   const title = req.body.title;
-  const author_id = req.body.author_id;
+  const author = req.body.author;
   const published_year = req.body.published_year;
   const rating = req.body.rating;
   const finished = req.body.finished;
+  const genres = req.body.genres;
+
+  if (
+    !req.body ||
+    !title ||
+    !author ||
+    !published_year ||
+    !rating ||
+    finished === undefined ||
+    !Array.isArray(genres)
+  ) {
+    return res.status(400).json({
+      error:
+        "Title, author, published year, rating, finished and genres are required",
+    });
+  }
+
+  let client;
 
   try {
-    const result = await pool.query(
-      "UPDATE books SET title = $1, author_id = $2, published_year = $3, rating = $4, finished = $5 WHERE id = $6 RETURNING *",
+    client = await pool.connect();
+
+    await client.query("BEGIN");
+
+    // Find the author
+    const authorResult = await client.query(
+      "SELECT id FROM authors WHERE name = $1",
+      [author],
+    );
+
+    let author_id;
+
+    // Use existing author or create a new one
+    if (authorResult.rows.length > 0) {
+      author_id = authorResult.rows[0].id;
+    } else {
+      const newAuthorResult = await client.query(
+        "INSERT INTO authors (name) VALUES ($1) RETURNING id",
+        [author],
+      );
+
+      author_id = newAuthorResult.rows[0].id;
+    }
+
+    // Update the book
+    const result = await client.query(
+      `UPDATE books
+       SET title = $1,
+           author_id = $2,
+           published_year = $3,
+           rating = $4,
+           finished = $5
+       WHERE id = $6
+       RETURNING id`,
       [title, author_id, published_year, rating, finished, id],
     );
 
+    // Book doesn't exist
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Book not found" });
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        error: "Book not found",
+      });
     }
-    res.status(200).json(result.rows[0]);
+
+    // Remove the book's old genre relationships
+    await client.query("DELETE FROM book_genres WHERE book_id = $1", [id]);
+
+    // Create the new genre relationships
+    for (const genre of genres) {
+      const genreResult = await client.query(
+        "SELECT id FROM genres WHERE name = $1",
+        [genre],
+      );
+
+      let genre_id;
+
+      // Use existing genre or create a new one
+      if (genreResult.rows.length > 0) {
+        genre_id = genreResult.rows[0].id;
+      } else {
+        const newGenreResult = await client.query(
+          "INSERT INTO genres (name) VALUES ($1) RETURNING id",
+          [genre],
+        );
+
+        genre_id = newGenreResult.rows[0].id;
+      }
+
+      // Connect the genre to the book
+      await client.query(
+        "INSERT INTO book_genres (book_id, genre_id) VALUES ($1, $2)",
+        [id, genre_id],
+      );
+    }
+
+    // Everything worked — save it
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      id,
+      title,
+      published_year,
+      rating,
+      finished,
+      author,
+      genres,
+    });
   } catch (error) {
-    console.log(error);
-    return res.status(500).json({ error: "Internal server error" });
+    // Something failed — undo the transaction
+    if (client) {
+      await client.query("ROLLBACK");
+    }
+
+    console.error(error);
+
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  } finally {
+    // Give the connection back to the pool
+    if (client) {
+      client.release();
+    }
   }
 };
 
