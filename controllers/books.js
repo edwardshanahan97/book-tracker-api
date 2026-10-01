@@ -93,33 +93,89 @@ export const getBookById = async (req, res) => {
 
 export const addBook = async (req, res) => {
   const title = req.body.title;
-  const author_id = req.body.author_id;
+  const author = req.body.author;
   const published_year = req.body.published_year;
   const rating = req.body.rating;
   const finished = req.body.finished;
+  const genres = req.body.genres;
 
   try {
     if (
       !req.body ||
       !title ||
-      !author_id ||
+      !author ||
       !published_year ||
       !rating ||
-      finished === undefined
+      finished === undefined ||
+      !Array.isArray(genres)
     ) {
-      return res
-        .status(400)
-        .json({ error: "Title, author, rating finished are required" });
+      return res.status(400).json({
+        error:
+          "Title, author, published year, rating and finished are required",
+      });
+    }
+
+    const authorResult = await pool.query(
+      "SELECT id FROM authors WHERE name = $1",
+      [author],
+    );
+
+    let author_id;
+
+    if (authorResult.rows.length > 0) {
+      author_id = authorResult.rows[0].id;
+    } else {
+      const newAuthorResult = await pool.query(
+        "INSERT INTO authors (name) VALUES ($1) RETURNING id",
+        [author],
+      );
+
+      author_id = newAuthorResult.rows[0].id;
     }
 
     const result = await pool.query(
-      "INSERT INTO books (title, author_id, published_year, rating, finished) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      "INSERT INTO books (title, author_id, published_year, rating, finished) VALUES ($1, $2, $3, $4, $5) RETURNING id",
       [title, author_id, published_year, rating, finished],
     );
 
-    res.status(201).json(result.rows[0]);
+    const book_id = result.rows[0].id;
+
+    for (const genre of genres) {
+      const genreResult = await pool.query(
+        "SELECT id FROM genres WHERE name = $1",
+        [genre],
+      );
+
+      let genre_id;
+
+      if (genreResult.rows.length > 0) {
+        genre_id = genreResult.rows[0].id;
+      } else {
+        const newGenreResult = await pool.query(
+          "INSERT INTO genres (name) VALUES ($1) RETURNING id",
+          [genre],
+        );
+
+        genre_id = newGenreResult.rows[0].id;
+      }
+
+      await pool.query(
+        "INSERT INTO book_genres (book_id, genre_id) VALUES ($1, $2)",
+        [book_id, genre_id],
+      );
+    }
+
+    res.status(201).json({
+      id: book_id,
+      title,
+      published_year,
+      rating,
+      finished,
+      author,
+      genres,
+    });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return res.status(500).json({ error: "Internal server error" });
   }
 };
